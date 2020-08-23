@@ -3,11 +3,16 @@ package com.dayakar.repository
 import com.dayakar.models.Note
 import com.dayakar.models.User
 import com.dayakar.repository.DatabaseFactory.dbQuery
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.postgresql.util.PSQLException
 
 class NotesRepository:Repository {
     override suspend fun addUser(
@@ -48,17 +53,26 @@ class NotesRepository:Repository {
         }
     }
 
-    override suspend fun addNote(userId: Int, title: String, notes: String, updateTime: String): Note? {
+    override suspend fun addNote(noteItem: Note): Note? {
          var statement:InsertStatement<Number>?=null
+         dbQuery {
 
-        dbQuery {
-            statement=Notes.insert {note->
-                note[Notes.userId]=userId
-                note[Notes.title]=title
-                note[Notes.note]=notes
-                note[Notes.updatetime]=updateTime
-
+            try{
+                statement=Notes.insert{note->
+                    note[Notes.id]=noteItem.id
+                    note[Notes.userId]=noteItem.userId
+                    note[Notes.title]=noteItem.title
+                    note[Notes.note]=noteItem.note
+                    note[Notes.updatetime]=noteItem.updatetime
+                }
+            }catch (e:ExposedSQLException){
+                CoroutineScope(Dispatchers.IO).launch {
+                    updateNote(noteItem)
+                }
+            }catch (e:Exception){
+                println("Message=${e.message}")
             }
+
         }
         return rowToNote(statement?.resultedValues?.get(0))
     }
@@ -93,6 +107,13 @@ class NotesRepository:Repository {
 
     }
 
+    override suspend fun addNotes(userId: Int, notes: List<Note>) {
+
+       notes.forEach {
+            addNote(it)
+        }
+
+    }
 
     suspend fun getNote(id: Int): Note? = dbQuery {
         Notes.select {

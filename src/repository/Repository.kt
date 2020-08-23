@@ -15,12 +15,15 @@ interface Repository {
 
     suspend fun findUserByEmail(email: String):User?
 
-    suspend fun addNote(userId: Int, title: String, notes:String,updateTime: String): Note?
+    suspend fun addNote(note: Note): Note?
 
     suspend fun  getNotes(userId: Int):List<Note>
 
     suspend fun updateNote(note:Note):Note?
 
     suspend fun deleteNote(noteId:Int):Boolean
+
+    suspend fun addNotes(userId: Int,notes:List<Note>)
+
 
 }

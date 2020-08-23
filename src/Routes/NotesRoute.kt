@@ -4,6 +4,8 @@ import com.dayakar.API_VERSION
 import com.dayakar.auth.MySession
 import com.dayakar.models.Note
 import com.dayakar.repository.Repository
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import io.ktor.application.application
 import io.ktor.application.call
 import io.ktor.application.log
@@ -12,14 +14,21 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.locations.*
 import io.ktor.request.receive
+import io.ktor.request.receiveParameters
 import io.ktor.response.respond
 import io.ktor.routing.Route
 import io.ktor.routing.delete
 import io.ktor.sessions.get
 import io.ktor.sessions.sessions
+import kotlin.reflect.typeOf
 
 const val NOTES = "$API_VERSION/notes"
+const val ADDNOTE = "$API_VERSION/notes/addNote"
 
+
+@KtorExperimentalLocationsAPI
+@Location(ADDNOTE)
+class AddNoteRoute
 
 @KtorExperimentalLocationsAPI
 @Location(NOTES)
@@ -27,64 +36,93 @@ class NoteRoute
 
 
 @KtorExperimentalLocationsAPI
+@Location("v1/notes/{id}")
+class NoteRouteDelete(val id: String)
+
+
+@KtorExperimentalLocationsAPI
 fun Route.notes(db:Repository){
 
-         authenticate("jwt"){
+         authenticate("jwt") {
+             post<AddNoteRoute> {
+                 val note = call.receive<Note>()
+                 println("----------Added Note $note")
 
-             post<NoteRoute>{
-                   //Getting All Parameters from request
-                   val noteParameters=call.receive<Parameters>()
-                   val title=noteParameters["title"]?: "Title"
-                   val note=noteParameters["note"]?: " "
-                   val  creationDate=noteParameters["updateTime"]?: System.currentTimeMillis().toString()
-
-                   //Getting use details from session id
-                   val user = call.sessions.get<MySession>()?.let {
-                       db.findUser(it.userId)
-                   }
-
-                   if (user == null) {
-                       call.respond(
-                           HttpStatusCode.BadRequest, "Problems retrieving User")
-                       return@post
-                   }
-
-                   try{
-                       //adding note
-                       val currentNote=db.addNote(user.userId,title,note,creationDate)
-
-                       //responding added note
-                       currentNote?.id?.let {
-                           call.respond(HttpStatusCode.OK, currentNote)
-                       }
-
-                   }catch (e:Throwable){
-                       application.log.error("Failed to add Note", e)
-                       call.respond(HttpStatusCode.BadRequest, "Problems Saving Note")
-                   }
-
-
-
-
-               }
-             get<NoteRoute>{
-                 //Getting use details from session id
-
-                 println("-----------------------Session id= ${call.sessions.get<MySession>()}")
                  val user = call.sessions.get<MySession>()?.let {
                      db.findUser(it.userId)
                  }
 
                  if (user == null) {
                      call.respond(
-                         HttpStatusCode.BadRequest, "Problems retrieving User")
+                         HttpStatusCode.BadRequest, "Problems retrieving User"
+                     )
+                     return@post
+                 }
+
+                 try {
+                     //adding note
+                     val addedNote = db.addNote(note)
+                     addedNote?.id?.let {
+                         call.respond(HttpStatusCode.OK, addedNote)
+                     }
+                 } catch (e: Throwable) {
+                     application.log.error("Failed to add Note", e)
+                     call.respond(HttpStatusCode.BadRequest, "Problems Saving Note")
+                 }
+
+
+             }
+
+
+             post<NoteRoute> {
+                 val param = call.receive<List<*>>()
+
+                 val jsonString=Gson().toJson(param)
+                 val notesList = Gson().fromJson<List<Note>>(jsonString, object: TypeToken<List<Note>>(){}.type)
+                 val user = call.sessions.get<MySession>()?.let {
+                     db.findUser(it.userId)
+                 }
+
+                 if (user == null) {
+                     call.respond(
+                         HttpStatusCode.BadRequest, "Problems retrieving User"
+                     )
+                     return@post
+                 }
+
+                 try {
+                     //adding note
+                      db.addNotes(user.userId,notesList)
+                     val notes = db.getNotes(user.userId)
+                     call.respond(notes)
+
+                 } catch (e: Throwable) {
+                     application.log.error("Failed to add Note", e)
+                     call.respond(HttpStatusCode.BadRequest, "Problems Saving Note")
+                 }
+
+
+             }
+             get<NoteRoute> {
+                 //Getting use details from session id
+
+                 println("-----------------Get method---Session id= ${call.sessions.get<MySession>()}")
+
+                 val user = call.sessions.get<MySession>()?.let {
+                     db.findUser(it.userId)
+                 }
+
+                 if (user == null) {
+                     call.respond(
+                         HttpStatusCode.BadRequest, "Problems retrieving User"
+                     )
                      return@get
                  }
 
                  try {
-                     val notes=db.getNotes(user.userId)
+                     val notes = db.getNotes(user.userId)
                      call.respond(notes)
-                 }catch (e:Throwable){
+                 } catch (e: Throwable) {
 
                      application.log.error("Failed to Retrieve Notes", e)
                      call.respond(HttpStatusCode.BadRequest, "Failed to Retrieve Notes")
@@ -92,9 +130,10 @@ fun Route.notes(db:Repository){
                  }
 
              }
-             put<NoteRoute>{
+             patch<NoteRoute> {
                  //Getting All Parameters from request
-                 val note=call.receive<Note>()
+                 val note = call.receive<Note>()
+
                  //Getting use details from session id
                  val user = call.sessions.get<MySession>()?.let {
                      db.findUser(it.userId)
@@ -102,57 +141,58 @@ fun Route.notes(db:Repository){
 
                  if (user == null) {
                      call.respond(
-                         HttpStatusCode.BadRequest, "Problems retrieving User")
-                     return@put
+                         HttpStatusCode.BadRequest, "Problems retrieving User"
+                     )
+                     return@patch
                  }
 
-                 try{
+                 try {
                      //update note
-                     val updatedNote=db.updateNote(note)
-
+                     val updatedNote = db.updateNote(note)
                      //responding added note
                      updatedNote?.id?.let {
                          call.respond(HttpStatusCode.OK, updatedNote)
                      }
 
-                 }catch (e:Throwable){
+                    // call.respond(HttpStatusCode.OK,"Done")
+                 } catch (e: Throwable) {
                      application.log.error("Failed to add Note", e)
                      call.respond(HttpStatusCode.BadRequest, "Problems Saving Note")
                  }
 
 
-
-
              }
-             delete<NoteRoute>{
+             delete<NoteRouteDelete> {
                  //Getting All Parameters from request
-                 val note=call.receive<Note>()
+
+                 val noteId = call.parameters["id"] ?: throw IllegalArgumentException("Parameter id not found")
+
                  //Getting use details from session id
+                 println("Note---------${noteId}")
                  val user = call.sessions.get<MySession>()?.let {
                      db.findUser(it.userId)
                  }
 
                  if (user == null) {
                      call.respond(
-                         HttpStatusCode.BadRequest, "Problems retrieving User")
+                         HttpStatusCode.BadRequest, "Problems retrieving User"
+                     )
                      return@delete
                  }
 
-                 try{
+                 try {
                      //update note
-                     val isDeleted=db.deleteNote(note.id)
+                     val isDeleted = db.deleteNote(noteId.toInt())
 
                      //responding added note
-                        if (isDeleted){
+                     if (isDeleted) {
                          call.respond(HttpStatusCode.OK, isDeleted)
-                     }else call.respond(HttpStatusCode.NotAcceptable,"Failed to delete Note")
+                     } else call.respond(HttpStatusCode.NotAcceptable, "Failed to delete Note")
 
-                 }catch (e:Throwable){
+                 } catch (e: Throwable) {
                      application.log.error("Failed to add Note", e)
                      call.respond(HttpStatusCode.BadRequest, "Problems Saving Note")
                  }
-
-
 
 
              }
@@ -160,4 +200,8 @@ fun Route.notes(db:Repository){
 
          }
 
+
+}
+inline fun <reified T> fromJson(json: String?): T {
+    return Gson().fromJson<T>(json, object: TypeToken<T>(){}.type)
 }

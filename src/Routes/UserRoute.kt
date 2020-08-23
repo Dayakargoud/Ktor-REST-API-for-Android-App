@@ -3,6 +3,7 @@ package com.dayakar.Routes
 import com.dayakar.API_VERSION
 import com.dayakar.auth.JwtService
 import com.dayakar.auth.MySession
+import com.dayakar.models.UserInfo
 import com.dayakar.repository.Repository
 import io.ktor.application.application
 import io.ktor.application.call
@@ -52,7 +53,9 @@ fun Route.users(db: Repository, jwtService: JwtService, hashFunction:(String)->S
             //Setting Session Id and generating Token
             newUser?.userId?.let {
                    call.sessions.set(MySession(it))
-                   call.respondText(jwtService.generateToken(newUser),status = HttpStatusCode.Created)
+                val token=jwtService.generateToken(newUser)
+                    val user=UserInfo(newUser.userId,newUser.displayName,token)
+                   call.respond(user)
             }
         }catch (e:Throwable){
                application.log.error("Failed to register user", e)
@@ -77,7 +80,9 @@ fun Route.users(db: Repository, jwtService: JwtService, hashFunction:(String)->S
                currentUser?.userId?.let {
                    if (currentUser.passwordHash == hash) {
                        call.sessions.set(MySession(it))
-                       call.respondText(jwtService.generateToken(currentUser))
+                       val token=jwtService.generateToken(currentUser)
+                       val user=UserInfo(currentUser.userId,currentUser.displayName,token)
+                       call.respond(user)
                    } else {
                        call.respond(
                            HttpStatusCode.BadRequest, "Problems retrieving User")
@@ -95,6 +100,7 @@ fun Route.users(db: Repository, jwtService: JwtService, hashFunction:(String)->S
 
 
     }
+
 }
 
 
